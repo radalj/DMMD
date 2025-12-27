@@ -189,3 +189,97 @@ List RevTot_cpp(List Config, List Seqs) {
 
     return result;
 }
+
+// [[Rcpp::export]]
+List DelGaps_cpp(List Config, List SeqMetFreW) {
+    int w_min = as<int>(Config["w_min"]);
+    int w_max = as<int>(Config["w_max"]);
+    List result = clone(SeqMetFreW);
+
+    for (int w = w_min; w <= w_max; ++w) {
+        int idx = w - 1;
+        if (idx < 0 || idx >= result.size() || Rf_isNull(result[idx])) continue;
+
+        DataFrame df = as<DataFrame>(result[idx]);
+        if (!df.containsElementNamed("Seq")) continue;
+
+        CharacterVector Seq = df["Seq"];
+        NumericVector Methyl = df["Methyl"];
+        IntegerVector Freq = df["Freq"];
+        IntegerVector Index = df["Index"];
+        int n = Seq.size();
+
+        // Efficiently filter out sequences containing 'n' (case-insensitive)
+        vector<int> keep;
+        keep.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            const string& s = as<string>(Seq[i]);
+            if (std::none_of(s.begin(), s.end(), [](char c){ return c == 'n' || c == 'N'; })) {
+                keep.push_back(i);
+            }
+        }
+        if (!keep.empty() && keep.size() < n) {
+            CharacterVector SeqNew(keep.size());
+            NumericVector MethylNew(keep.size());
+            IntegerVector FreqNew(keep.size());
+            IntegerVector IndexNew(keep.size());
+            for (size_t j = 0; j < keep.size(); ++j) {
+                int i = keep[j];
+                SeqNew[j] = Seq[i];
+                MethylNew[j] = Methyl[i];
+                FreqNew[j] = Freq[i];
+                IndexNew[j] = Index[i];
+            }
+            DataFrame new_df = DataFrame::create(
+                Named("Seq") = SeqNew,
+                Named("Methyl") = MethylNew,
+                Named("Freq") = FreqNew,
+                Named("Index") = IndexNew
+            );
+            result[idx] = new_df;
+        }
+        else if (keep.empty()) {
+            // If no sequences remain, create empty data.frame
+            DataFrame new_df = DataFrame::create(
+                Named("Seq") = CharacterVector(0),
+                Named("Methyl") = NumericVector(0),
+                Named("Freq") = IntegerVector(0),
+                Named("Index") = IntegerVector(0)
+            );
+            result[idx] = new_df;
+        }
+    }
+    return result;
+}
+
+// [[Rcpp::export]]
+List DelGapsTot_cpp(List Config, List Seqs) {
+    int w_min = as<int>(Config["w_min"]);
+    int w_max = as<int>(Config["w_max"]);
+    List result = clone(Seqs);
+    for (int w = w_min; w <= w_max; ++w) {
+        int idx = w - 1;
+        if (idx < 0 || idx >= result.size() || Rf_isNull(result[idx])) continue;
+        CharacterVector Seq = as<CharacterVector>(result[idx]);
+        int n = Seq.size();
+        vector<int> keep;
+        keep.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            const std::string& s = as<std::string>(Seq[i]);
+            if (std::none_of(s.begin(), s.end(), [](char c){ return c == 'n' || c == 'N'; })) {
+                keep.push_back(i);
+            }
+        }
+        if (!keep.empty() && keep.size() < n) {
+            CharacterVector SeqNew(keep.size());
+            for (size_t j = 0; j < keep.size(); ++j) {
+                SeqNew[j] = Seq[keep[j]];
+            }
+            result[idx] = SeqNew;
+        }
+        else if (keep.empty()) {
+            result[idx] = CharacterVector(0);
+        }
+    }
+    return result;
+}
