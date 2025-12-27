@@ -21,6 +21,8 @@ List Rev_cpp(List Config, List SeqMetFreW);
 List RevTot_cpp(List Config, List Seqs);
 List DelGaps_cpp(List Config, List SeqMetFreW);
 List DelGapsTot_cpp(List Config, List Seqs);
+List ProneMet_cpp(List Config, List SeqMetFreW);
+List ResisMet_cpp(List Config, List SeqMetFreW);
 
 // Helper: run arbitrary R code in the embedded interpreter
 void run_R_code(const char* code) {
@@ -153,6 +155,40 @@ List call_DelGapsTot_R(List Config, List Seqs) {
     return DelGapsTot(Config, Seqs);
 }
 
+// Helper: Call the R ProneMet function
+List call_ProneMet_R(List Config, List SeqMetFreW) {
+    try {
+        Environment dmmd = Environment::namespace_env("DMMD");
+        if (dmmd.exists("ProneMet")) {
+            Function ProneMet = dmmd["ProneMet"];
+            return ProneMet(Config, SeqMetFreW);
+        }
+    } catch (...) {}
+    Environment global = Environment::global_env();
+    if (!global.exists("ProneMet")) {
+        stop("ProneMet not found in DMMD namespace or global environment");
+    }
+    Function ProneMet = global["ProneMet"];
+    return ProneMet(Config, SeqMetFreW);
+}
+
+// Helper: Call the R ResisMet function
+List call_ResisMet_R(List Config, List SeqMetFreW) {
+    try {
+        Environment dmmd = Environment::namespace_env("DMMD");
+        if (dmmd.exists("ResisMet")) {
+            Function ResisMet = dmmd["ResisMet"];
+            return ResisMet(Config, SeqMetFreW);
+        }
+    } catch (...) {}
+    Environment global = Environment::global_env();
+    if (!global.exists("ResisMet")) {
+        stop("ResisMet not found in DMMD namespace or global environment");
+    }
+    Function ResisMet = global["ResisMet"];
+    return ResisMet(Config, SeqMetFreW);
+}
+
 // Helper: Compare two lists of CharacterVectors
 bool compare_seq_lists(const List& a, const List& b) {
     if (a.size() != b.size()) return false;
@@ -257,6 +293,44 @@ bool compare_delgapstot_lists(const List& a, const List& b) {
         if (vecA.size() != vecB.size()) return false;
         for (int j = 0; j < vecA.size(); ++j) {
             if (as<string>(vecA[j]) != as<string>(vecB[j])) return false;
+        }
+    }
+    return true;
+}
+
+// Helper: Compare two ProneMet result lists by comparing data.frames
+bool compare_pronemet_lists(const List& a, const List& b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0; i < a.size(); ++i) {
+        if (Rf_isNull(a[i]) && Rf_isNull(b[i])) continue;
+        if (Rf_isNull(a[i]) || Rf_isNull(b[i])) return false;
+        DataFrame dfA = as<DataFrame>(a[i]);
+        DataFrame dfB = as<DataFrame>(b[i]);
+        if (dfA.nrows() != dfB.nrows()) return false;
+        CharacterVector seqA = dfA["Seq"];
+        CharacterVector seqB = dfB["Seq"];
+        if (seqA.size() != seqB.size()) return false;
+        for (int j = 0; j < seqA.size(); ++j) {
+            if (as<string>(seqA[j]) != as<string>(seqB[j])) return false;
+        }
+    }
+    return true;
+}
+
+// Helper: Compare two ResisMet result lists by comparing data.frames
+bool compare_resismet_lists(const List& a, const List& b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0; i < a.size(); ++i) {
+        if (Rf_isNull(a[i]) && Rf_isNull(b[i])) continue;
+        if (Rf_isNull(a[i]) || Rf_isNull(b[i])) return false;
+        DataFrame dfA = as<DataFrame>(a[i]);
+        DataFrame dfB = as<DataFrame>(b[i]);
+        if (dfA.nrows() != dfB.nrows()) return false;
+        CharacterVector seqA = dfA["Seq"];
+        CharacterVector seqB = dfB["Seq"];
+        if (seqA.size() != seqB.size()) return false;
+        for (int j = 0; j < seqA.size(); ++j) {
+            if (as<string>(seqA[j]) != as<string>(seqB[j])) return false;
         }
     }
     return true;
@@ -499,6 +573,117 @@ void test_DelGapsTot() {
     }
 }
 
+//test ProneMet_cpp against R ProneMet
+void test_ProneMet() {
+    Rcout << "Testing ProneMet_cpp vs ProneMet (R)... \n";
+
+    // Minimal Config
+    List Config = List::create(
+        Named("w_min") = 3,
+        Named("w_max") = 4,
+        Named("MethProne") = 0.5
+    );
+
+    // Build SeqMetFreW structure: list with data.frames at positions 3 and 4
+    List SeqMetFreW(4);
+    
+    // Fill positions 0-2 with NULL
+    for (int i = 0; i < 3; ++i) {
+        SeqMetFreW[i] = R_NilValue;
+    }
+    
+    // Position 3 (w=3): data.frame with Seq, Methyl, Freq, Index
+    CharacterVector seqs3 = CharacterVector::create("acgtacgtacgt", "ttttccccaaaa");
+    NumericVector methyl3 = NumericVector::create(0.8, 0.3);
+    IntegerVector freq3 = IntegerVector::create(10, 5);
+    IntegerVector index3 = IntegerVector::create(1, 2);
+    DataFrame df3 = DataFrame::create(
+        Named("Seq") = seqs3,
+        Named("Methyl") = methyl3,
+        Named("Freq") = freq3,
+        Named("Index") = index3
+    );
+    SeqMetFreW[2] = df3;
+    
+    // Position 4 (w=4): data.frame
+    CharacterVector seqs4 = CharacterVector::create("ggggggggggtaaaaaaaaa");
+    NumericVector methyl4 = NumericVector::create(0.5);
+    IntegerVector freq4 = IntegerVector::create(3);
+    IntegerVector index4 = IntegerVector::create(3);
+    DataFrame df4 = DataFrame::create(
+        Named("Seq") = seqs4,
+        Named("Methyl") = methyl4,
+        Named("Freq") = freq4,
+        Named("Index") = index4
+    );
+    SeqMetFreW[3] = df4;
+
+    // Call both implementations
+    List r_out = call_ProneMet_R(Config, SeqMetFreW);
+    List cpp_out = ProneMet_cpp(Config, SeqMetFreW);
+    bool ok = compare_pronemet_lists(r_out, cpp_out);
+    if (ok) {
+        Rcout << "\033[32mPASS\033[0m\n";
+    } else {
+        Rcout << "\033[31mFAIL\033[0m\n";
+    }
+}
+
+//test ResisMet_cpp against R ResisMet
+void test_ResisMet() {
+    Rcout << "Testing ResisMet_cpp vs ResisMet (R)... \n";
+
+    // Minimal Config
+    List Config = List::create(
+        Named("w_min") = 3,
+        Named("w_max") = 4,
+        Named("MethResis") = 0.5
+    );
+
+    // Build SeqMetFreW structure: list with data.frames at positions 3 and 4
+    List SeqMetFreW(4);
+    
+    // Fill positions 0-2 with NULL
+    for (int i = 0; i < 3; ++i) {
+        SeqMetFreW[i] = R_NilValue;
+    }
+    
+    // Position 3 (w=3): data.frame with Seq, Methyl, Freq, Index
+    CharacterVector seqs3 = CharacterVector::create("acgtacgtacgt", "ttttccccaaaa");
+    NumericVector methyl3 = NumericVector::create(0.8, 0.3);
+    IntegerVector freq3 = IntegerVector::create(10, 5);
+    IntegerVector index3 = IntegerVector::create(1, 2);
+    DataFrame df3 = DataFrame::create(
+        Named("Seq") = seqs3,
+        Named("Methyl") = methyl3,
+        Named("Freq") = freq3,
+        Named("Index") = index3
+    );
+    SeqMetFreW[2] = df3;
+    
+    // Position 4 (w=4): data.frame
+    CharacterVector seqs4 = CharacterVector::create("ggggggggggtaaaaaaaaa");
+    NumericVector methyl4 = NumericVector::create(0.5);
+    IntegerVector freq4 = IntegerVector::create(3);
+    IntegerVector index4 = IntegerVector::create(3);
+    DataFrame df4 = DataFrame::create(
+        Named("Seq") = seqs4,
+        Named("Methyl") = methyl4,
+        Named("Freq") = freq4,
+        Named("Index") = index4
+    );
+    SeqMetFreW[3] = df4;
+
+    // Call both implementations
+    List r_out = call_ResisMet_R(Config, SeqMetFreW);
+    List cpp_out = ResisMet_cpp(Config, SeqMetFreW);
+    bool ok = compare_resismet_lists(r_out, cpp_out);
+    if (ok) {
+        Rcout << "\033[32mPASS\033[0m\n";
+    } else {
+        Rcout << "\033[31mFAIL\033[0m\n";
+    }
+}
 
 // Main
 int main() {
@@ -518,6 +703,8 @@ int main() {
     test_RevTot();    
     test_DelGaps();
     test_DelGapsTot();
+    test_ProneMet();
+    test_ResisMet();
 
     Rf_endEmbeddedR(0);
     return 0;

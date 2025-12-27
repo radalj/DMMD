@@ -283,3 +283,131 @@ List DelGapsTot_cpp(List Config, List Seqs) {
     }
     return result;
 }
+
+// [[Rcpp::export]]
+List ProneMet_cpp(List Config, List SeqMetFreW) {
+    double MethProne = as<double>(Config["MethProne"]);
+    int w_min = as<int>(Config["w_min"]);
+    int w_max = as<int>(Config["w_max"]);
+    List SeqMetFreProne(w_max);
+
+    for (int i = 0; i < w_max; ++i) {
+        SeqMetFreProne[i] = R_NilValue;
+    }
+
+    for (int w = w_min; w <= w_max; ++w) {
+        // Access SeqMetFreW[w-1] (0-based indexing for input)
+        int idx = w - 1;
+        if (idx < 0 || idx >= SeqMetFreW.size() || Rf_isNull(SeqMetFreW[idx])) {
+            SeqMetFreProne[idx] = R_NilValue;
+            continue;
+        }
+        DataFrame df = as<DataFrame>(SeqMetFreW[idx]);
+        if (!df.containsElementNamed("Methyl")) {
+            SeqMetFreProne[idx] = R_NilValue;
+            continue;
+        }
+        NumericVector methyl = df["Methyl"];
+        LogicalVector keep = methyl >= MethProne;
+        int n = sum(keep);
+        if (n == 0) {
+            SeqMetFreProne[idx] = DataFrame::create(
+                Named("Seq") = CharacterVector(0),
+                Named("Methyl") = NumericVector(0),
+                Named("Freq") = IntegerVector(0),
+                Named("Index") = IntegerVector(0)
+            );
+            continue;
+        }
+        CharacterVector Seq = df["Seq"];
+        NumericVector Methyl = df["Methyl"];
+        IntegerVector Freq = df["Freq"];
+        IntegerVector Index = df["Index"];
+        CharacterVector SeqNew(n);
+        NumericVector MethylNew(n);
+        IntegerVector FreqNew(n);
+        IntegerVector IndexNew(n);
+        int j = 0;
+        for (int i = 0; i < keep.size(); ++i) {
+            if (keep[i]) {
+                SeqNew[j] = Seq[i];
+                MethylNew[j] = Methyl[i];
+                FreqNew[j] = Freq[i];
+                IndexNew[j] = Index[i];
+                ++j;
+            }
+        }
+        DataFrame new_df = DataFrame::create(
+            Named("Seq") = SeqNew,
+            Named("Methyl") = MethylNew,
+            Named("Freq") = FreqNew,
+            Named("Index") = IndexNew
+        );
+        SeqMetFreProne[idx] = new_df; // Store at index w (output)
+    }
+    return SeqMetFreProne;
+}
+
+// [[Rcpp::export]]
+List ResisMet_cpp(List Config, List SeqMetFreW) {
+    double MethResis = as<double>(Config["MethResis"]);
+    int w_min = as<int>(Config["w_min"]);
+    int w_max = as<int>(Config["w_max"]);
+    List SeqMetFreResis(w_max);
+
+    for (int i = 0; i < w_max; ++i) {
+        SeqMetFreResis[i] = R_NilValue;
+    }
+    
+    for (int w = w_min; w <= w_max; ++w) {
+        // Access SeqMetFreW[w-1] (0-based indexing for input)
+        int idx = w - 1;
+        if (idx < 0 || idx >= SeqMetFreW.size() || Rf_isNull(SeqMetFreW[idx])) {
+            SeqMetFreResis[idx] = R_NilValue;
+            continue;
+        }
+        DataFrame df = as<DataFrame>(SeqMetFreW[idx]);
+        if (!df.containsElementNamed("Methyl")) {
+            SeqMetFreResis[idx] = R_NilValue;
+            continue;
+        }
+        NumericVector methyl = df["Methyl"];
+        LogicalVector keep = methyl <= MethResis;
+        int n = sum(keep);
+        if (n == 0) {
+            SeqMetFreResis[idx] = DataFrame::create(
+                Named("Seq") = CharacterVector(0),
+                Named("Methyl") = NumericVector(0),
+                Named("Freq") = IntegerVector(0),
+                Named("Index") = IntegerVector(0)
+            );
+            continue;
+        }
+        CharacterVector Seq = df["Seq"];
+        NumericVector Methyl = df["Methyl"];
+        IntegerVector Freq = df["Freq"];
+        IntegerVector Index = df["Index"];
+        CharacterVector SeqNew(n);
+        NumericVector MethylNew(n);
+        IntegerVector FreqNew(n);
+        IntegerVector IndexNew(n);
+        int j = 0;
+        for (int i = 0; i < keep.size(); ++i) {
+            if (keep[i]) {
+                SeqNew[j] = Seq[i];
+                MethylNew[j] = Methyl[i];
+                FreqNew[j] = Freq[i];
+                IndexNew[j] = Index[i];
+                ++j;
+            }
+        }
+        DataFrame new_df = DataFrame::create(
+            Named("Seq") = SeqNew,
+            Named("Methyl") = MethylNew,
+            Named("Freq") = FreqNew,
+            Named("Index") = IndexNew
+        );
+        SeqMetFreResis[idx] = new_df; // Store at index w (output)
+    }
+    return SeqMetFreResis;
+}
